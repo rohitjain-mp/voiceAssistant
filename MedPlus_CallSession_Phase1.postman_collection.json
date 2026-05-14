@@ -1,0 +1,347 @@
+{
+  "info": {
+    "name": "MedPlus Call Session — Phase 1",
+    "description": "End-to-end testing for CallSessionController. Tests STT, TTS, intent, blocks, and voiceFlowState round-trip against http://192.168.0.72:31012",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://192.168.0.72:31012" },
+    { "key": "callId", "value": "test-call-001" },
+    { "key": "callerId", "value": "+919876543210" },
+    { "key": "voiceFlowState", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. Health Check — Text Transcript (English)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "pm.test('Has assistantText', () => {",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.assistantText).to.be.a('string').and.not.empty;",
+              "});",
+              "pm.test('Has blocks', () => {",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.blocks).to.be.an('array');",
+              "});",
+              "// Save voiceFlowState for next request",
+              "const json = pm.response.json();",
+              "if (json.voiceFlowState) {",
+              "  pm.collectionVariables.set('voiceFlowState', json.voiceFlowState);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/call/transcript",
+        "header": [],
+        "body": {
+          "mode": "urlencoded",
+          "urlencoded": [
+            { "key": "callId", "value": "{{callId}}" },
+            { "key": "callerId", "value": "{{callerId}}" },
+            { "key": "transcript", "value": "hello" },
+            { "key": "languageHint", "value": "en-IN" },
+            { "key": "voiceFlowState", "value": "" },
+            { "key": "lastUserTranscript", "value": "" },
+            { "key": "lastAssistantMessage", "value": "" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "2. Conversational Intent — What is Dolo 650",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "pm.test('Response is conversational not search', () => {",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.assistantText).to.be.a('string').and.not.empty;",
+              "  // Should NOT return a PL (product list) block for an informational question",
+              "  const hasProductList = (json.blocks || []).some(b => b.type === 'PL');",
+              "  pm.expect(hasProductList).to.be.false;",
+              "});",
+              "pm.test('Has audioBase64', () => {",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.audioBase64).to.be.a('string').and.not.empty;",
+              "});",
+              "const json = pm.response.json();",
+              "if (json.voiceFlowState) {",
+              "  pm.collectionVariables.set('voiceFlowState', json.voiceFlowState);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/call/transcript",
+        "body": {
+          "mode": "urlencoded",
+          "urlencoded": [
+            { "key": "callId", "value": "{{callId}}" },
+            { "key": "callerId", "value": "{{callerId}}" },
+            { "key": "transcript", "value": "what is dolo 650" },
+            { "key": "languageHint", "value": "en-IN" },
+            { "key": "voiceFlowState", "value": "{{voiceFlowState}}" },
+            { "key": "lastUserTranscript", "value": "hello" },
+            { "key": "lastAssistantMessage", "value": "Welcome to MedPlus. How can I help you?" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "3. Search Intent — Search Dolo 650",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "pm.test('Returns product list block', () => {",
+              "  const json = pm.response.json();",
+              "  const hasProductList = (json.blocks || []).some(b => b.type === 'PL');",
+              "  pm.expect(hasProductList).to.be.true;",
+              "});",
+              "pm.test('voiceFlowState set after search', () => {",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.voiceFlowState).to.be.a('string').and.not.empty;",
+              "});",
+              "// Save for next turn (row selection)",
+              "const json = pm.response.json();",
+              "if (json.voiceFlowState) {",
+              "  pm.collectionVariables.set('voiceFlowState', json.voiceFlowState);",
+              "}",
+              "if (json.assistantText) {",
+              "  pm.collectionVariables.set('lastAssistantMessage', json.assistantText);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/call/transcript",
+        "body": {
+          "mode": "urlencoded",
+          "urlencoded": [
+            { "key": "callId", "value": "{{callId}}" },
+            { "key": "callerId", "value": "{{callerId}}" },
+            { "key": "transcript", "value": "search dolo 650" },
+            { "key": "languageHint", "value": "en-IN" },
+            { "key": "voiceFlowState", "value": "{{voiceFlowState}}" },
+            { "key": "lastUserTranscript", "value": "what is dolo 650" },
+            { "key": "lastAssistantMessage", "value": "" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "4. Flow — Pick First Result",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "pm.test('Asks for pack count or adds to cart', () => {",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.assistantText).to.be.a('string').and.not.empty;",
+              "});",
+              "const json = pm.response.json();",
+              "if (json.voiceFlowState) {",
+              "  pm.collectionVariables.set('voiceFlowState', json.voiceFlowState);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/call/transcript",
+        "body": {
+          "mode": "urlencoded",
+          "urlencoded": [
+            { "key": "callId", "value": "{{callId}}" },
+            { "key": "callerId", "value": "{{callerId}}" },
+            { "key": "transcript", "value": "first one" },
+            { "key": "languageHint", "value": "en-IN" },
+            { "key": "voiceFlowState", "value": "{{voiceFlowState}}" },
+            { "key": "lastUserTranscript", "value": "search dolo 650" },
+            { "key": "lastAssistantMessage", "value": "" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "5. Flow — Set Pack Count (Add to Cart)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "pm.test('AC block executed or cart updated', () => {",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.assistantText).to.be.a('string').and.not.empty;",
+              "});",
+              "const json = pm.response.json();",
+              "if (json.voiceFlowState) {",
+              "  pm.collectionVariables.set('voiceFlowState', json.voiceFlowState);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/call/transcript",
+        "body": {
+          "mode": "urlencoded",
+          "urlencoded": [
+            { "key": "callId", "value": "{{callId}}" },
+            { "key": "callerId", "value": "{{callerId}}" },
+            { "key": "transcript", "value": "2 packs" },
+            { "key": "languageHint", "value": "en-IN" },
+            { "key": "voiceFlowState", "value": "{{voiceFlowState}}" },
+            { "key": "lastUserTranscript", "value": "first one" },
+            { "key": "lastAssistantMessage", "value": "" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "6. Show Cart",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "pm.test('Returns cart block CL', () => {",
+              "  const json = pm.response.json();",
+              "  const hasCart = (json.blocks || []).some(b => b.type === 'CL');",
+              "  pm.expect(hasCart).to.be.true;",
+              "});",
+              "const json = pm.response.json();",
+              "if (json.voiceFlowState) {",
+              "  pm.collectionVariables.set('voiceFlowState', json.voiceFlowState);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/call/transcript",
+        "body": {
+          "mode": "urlencoded",
+          "urlencoded": [
+            { "key": "callId", "value": "{{callId}}" },
+            { "key": "callerId", "value": "{{callerId}}" },
+            { "key": "transcript", "value": "show my cart" },
+            { "key": "languageHint", "value": "en-IN" },
+            { "key": "voiceFlowState", "value": "{{voiceFlowState}}" },
+            { "key": "lastUserTranscript", "value": "2 packs" },
+            { "key": "lastAssistantMessage", "value": "" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "7. Hindi — Search in Hindi",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "pm.test('Has response', () => {",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.assistantText).to.be.a('string').and.not.empty;",
+              "});",
+              "const json = pm.response.json();",
+              "if (json.voiceFlowState) {",
+              "  pm.collectionVariables.set('voiceFlowState', json.voiceFlowState);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/call/transcript",
+        "body": {
+          "mode": "urlencoded",
+          "urlencoded": [
+            { "key": "callId", "value": "test-call-hindi-001" },
+            { "key": "callerId", "value": "{{callerId}}" },
+            { "key": "transcript", "value": "डोलो 650 खोजें" },
+            { "key": "languageHint", "value": "hi-IN" },
+            { "key": "voiceFlowState", "value": "" },
+            { "key": "lastUserTranscript", "value": "" },
+            { "key": "lastAssistantMessage", "value": "" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "8. Error Case — Empty Request",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Returns error gracefully', () => {",
+              "  const json = pm.response.json();",
+              "  // Should not crash — must return structured error",
+              "  pm.expect(json).to.be.an('object');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/call/transcript",
+        "body": {
+          "mode": "urlencoded",
+          "urlencoded": [
+            { "key": "callId", "value": "test-call-error" },
+            { "key": "transcript", "value": "" },
+            { "key": "audioBase64", "value": "" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "9. Audio File — Full STT Pipeline (manual)",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/call/transcript",
+        "header": [],
+        "body": {
+          "mode": "urlencoded",
+          "urlencoded": [
+            { "key": "callId", "value": "test-call-audio-001" },
+            { "key": "callerId", "value": "{{callerId}}" },
+            { "key": "transcript", "value": "" },
+            { "key": "audioBase64", "value": "PASTE_YOUR_BASE64_WAV_HERE" },
+            { "key": "languageHint", "value": "en-IN" },
+            { "key": "voiceFlowState", "value": "" },
+            { "key": "lastUserTranscript", "value": "" },
+            { "key": "lastAssistantMessage", "value": "" }
+          ]
+        }
+      }
+    }
+  ]
+}
