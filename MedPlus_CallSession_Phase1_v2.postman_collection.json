@@ -1,0 +1,519 @@
+{
+  "info": {
+    "name": "MedPlus Call Session — Phase 1 v2",
+    "description": "Complete call center flow: /call/incoming → /call/transcript (multi-turn) → /call/hangup. Token is created on incoming, stored in collection variables, and passed automatically to all subsequent requests. Base URL: http://192.168.0.72:31012",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl",        "value": "http://192.168.0.72:31012" },
+    { "key": "callId",         "value": "test-call-001" },
+    { "key": "callerId",       "value": "8885115613" },
+    { "key": "callToken",      "value": "" },
+    { "key": "voiceFlowState", "value": "" },
+    { "key": "lastTranscript", "value": "" },
+    { "key": "lastAssistant",  "value": "" }
+  ],
+  "item": [
+
+    {
+      "name": "── STEP 1: CALL INCOMING ──────────────────",
+      "item": [
+
+        {
+          "name": "1A. Incoming — Known Customer (CONTINUE)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Action is CONTINUE', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.dataObject.action).to.equal('CONTINUE');",
+                  "});",
+                  "pm.test('callToken is present', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.dataObject.callToken).to.be.a('string').and.not.empty;",
+                  "});",
+                  "pm.test('audioBase64 is present', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.dataObject.audioBase64).to.be.a('string').and.not.empty;",
+                  "});",
+                  "// Save callToken for all subsequent requests",
+                  "const token = pm.response.json().dataObject.callToken;",
+                  "if (token) { pm.collectionVariables.set('callToken', token); }",
+                  "console.log('callToken saved:', token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/call/incoming",
+            "header": [],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "callId",   "value": "{{callId}}",   "description": "Unique call ID from telephony" },
+                { "key": "callerId", "value": "{{callerId}}", "description": "Customer mobile number — must exist in Solr" }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "1B. Incoming — Unknown Customer (TRANSFER_TO_AGENT)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Action is TRANSFER_TO_AGENT', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.dataObject.action).to.equal('TRANSFER_TO_AGENT');",
+                  "});",
+                  "pm.test('Reason is CUSTOMER_NOT_FOUND', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.dataObject.reason).to.equal('CUSTOMER_NOT_FOUND');",
+                  "});",
+                  "pm.test('audioBase64 is present for hold message', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.dataObject.audioBase64).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/call/incoming",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "callId",   "value": "test-call-unknown-001" },
+                { "key": "callerId", "value": "9100000000", "description": "Mobile number NOT in Solr" }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "1C. Incoming — Missing callerId (Validation Error)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Returns failure for missing callerId', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.statusCode).to.equal('FAILURE');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/call/incoming",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "callId",   "value": "test-call-validation" },
+                { "key": "callerId", "value": "" }
+              ]
+            }
+          }
+        }
+
+      ]
+    },
+
+    {
+      "name": "── STEP 2: CALL TRANSCRIPT (multi-turn) ───",
+      "item": [
+
+        {
+          "name": "2A. Transcript — Conversational (what is dolo 650)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has assistantText', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.dataObject.assistantText).to.be.a('string').and.not.empty;",
+                  "});",
+                  "pm.test('No PL block for informational question', () => {",
+                  "  const blocks = pm.response.json().dataObject.blocks || [];",
+                  "  pm.expect(blocks.some(b => b.type === 'PL')).to.be.false;",
+                  "});",
+                  "pm.test('Has audioBase64', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.dataObject.audioBase64).to.be.a('string').and.not.empty;",
+                  "});",
+                  "const obj = pm.response.json().dataObject;",
+                  "if (obj.voiceFlowState) pm.collectionVariables.set('voiceFlowState', obj.voiceFlowState);",
+                  "pm.collectionVariables.set('lastTranscript', 'what is dolo 650');",
+                  "pm.collectionVariables.set('lastAssistant', obj.assistantText || '');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/call/transcript",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "callId",              "value": "{{callId}}" },
+                { "key": "tokenId",             "value": "{{callToken}}", "description": "Token received from /call/incoming" },
+                { "key": "transcript",          "value": "what is dolo 650" },
+                { "key": "languageHint",        "value": "en-IN" },
+                { "key": "lastUserTranscript",  "value": "" },
+                { "key": "lastAssistantMessage","value": "" }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "2B. Transcript — Search Intent (search dolo 650)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns PL block', () => {",
+                  "  const blocks = pm.response.json().dataObject.blocks || [];",
+                  "  pm.expect(blocks.some(b => b.type === 'PL')).to.be.true;",
+                  "});",
+                  "pm.test('voiceFlowState set', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.dataObject.voiceFlowState).to.be.a('string').and.not.empty;",
+                  "});",
+                  "const obj = pm.response.json().dataObject;",
+                  "if (obj.voiceFlowState) pm.collectionVariables.set('voiceFlowState', obj.voiceFlowState);",
+                  "pm.collectionVariables.set('lastTranscript', 'search dolo 650');",
+                  "pm.collectionVariables.set('lastAssistant', obj.assistantText || '');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/call/transcript",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "callId",              "value": "{{callId}}" },
+                { "key": "tokenId",             "value": "{{callToken}}" },
+                { "key": "transcript",          "value": "search dolo 650" },
+                { "key": "languageHint",        "value": "en-IN" },
+                { "key": "lastUserTranscript",  "value": "{{lastTranscript}}" },
+                { "key": "lastAssistantMessage","value": "{{lastAssistant}}" }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "2C. Transcript — Pick First Result",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has assistantText', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.dataObject.assistantText).to.be.a('string').and.not.empty;",
+                  "});",
+                  "const obj = pm.response.json().dataObject;",
+                  "if (obj.voiceFlowState) pm.collectionVariables.set('voiceFlowState', obj.voiceFlowState);",
+                  "pm.collectionVariables.set('lastTranscript', 'first one');",
+                  "pm.collectionVariables.set('lastAssistant', obj.assistantText || '');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/call/transcript",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "callId",              "value": "{{callId}}" },
+                { "key": "tokenId",             "value": "{{callToken}}" },
+                { "key": "transcript",          "value": "first one" },
+                { "key": "languageHint",        "value": "en-IN" },
+                { "key": "lastUserTranscript",  "value": "{{lastTranscript}}" },
+                { "key": "lastAssistantMessage","value": "{{lastAssistant}}" }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "2D. Transcript — Set Pack Count (2 packs)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has assistantText', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.dataObject.assistantText).to.be.a('string').and.not.empty;",
+                  "});",
+                  "const obj = pm.response.json().dataObject;",
+                  "if (obj.voiceFlowState) pm.collectionVariables.set('voiceFlowState', obj.voiceFlowState);",
+                  "pm.collectionVariables.set('lastTranscript', '2 packs');",
+                  "pm.collectionVariables.set('lastAssistant', obj.assistantText || '');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/call/transcript",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "callId",              "value": "{{callId}}" },
+                { "key": "tokenId",             "value": "{{callToken}}" },
+                { "key": "transcript",          "value": "2 packs" },
+                { "key": "languageHint",        "value": "en-IN" },
+                { "key": "lastUserTranscript",  "value": "{{lastTranscript}}" },
+                { "key": "lastAssistantMessage","value": "{{lastAssistant}}" }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "2E. Transcript — Show Cart",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns CL block', () => {",
+                  "  const blocks = pm.response.json().dataObject.blocks || [];",
+                  "  pm.expect(blocks.some(b => b.type === 'CL')).to.be.true;",
+                  "});",
+                  "const obj = pm.response.json().dataObject;",
+                  "if (obj.voiceFlowState) pm.collectionVariables.set('voiceFlowState', obj.voiceFlowState);",
+                  "pm.collectionVariables.set('lastTranscript', 'show my cart');",
+                  "pm.collectionVariables.set('lastAssistant', obj.assistantText || '');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/call/transcript",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "callId",              "value": "{{callId}}" },
+                { "key": "tokenId",             "value": "{{callToken}}" },
+                { "key": "transcript",          "value": "show my cart" },
+                { "key": "languageHint",        "value": "en-IN" },
+                { "key": "lastUserTranscript",  "value": "{{lastTranscript}}" },
+                { "key": "lastAssistantMessage","value": "{{lastAssistant}}" }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "2F. Transcript — Invalid Token (Security Check)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Rejects mismatched token', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.statusCode).to.equal('FAILURE');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/call/transcript",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "callId",              "value": "{{callId}}" },
+                { "key": "tokenId",             "value": "invalid-token-xyz", "description": "Intentionally wrong token" },
+                { "key": "transcript",          "value": "show my cart" },
+                { "key": "languageHint",        "value": "en-IN" },
+                { "key": "lastUserTranscript",  "value": "" },
+                { "key": "lastAssistantMessage","value": "" }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "2G. Transcript — Hindi (डोलो 650 खोजें)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has response', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.dataObject.assistantText).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/call/transcript",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "callId",              "value": "test-call-hindi-001" },
+                { "key": "tokenId",             "value": "{{callToken}}" },
+                { "key": "transcript",          "value": "डोलो 650 खोजें" },
+                { "key": "languageHint",        "value": "hi-IN" },
+                { "key": "lastUserTranscript",  "value": "" },
+                { "key": "lastAssistantMessage","value": "" }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "2H. Transcript — Audio File (Full STT Pipeline)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/call/transcript",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "callId",              "value": "{{callId}}" },
+                { "key": "tokenId",             "value": "{{callToken}}" },
+                { "key": "transcript",          "value": "",             "description": "Leave blank to use audioBase64" },
+                { "key": "audioBase64",         "value": "PASTE_BASE64_WAV_HERE" },
+                { "key": "languageHint",        "value": "en-IN" },
+                { "key": "lastUserTranscript",  "value": "" },
+                { "key": "lastAssistantMessage","value": "" }
+              ]
+            }
+          }
+        }
+
+      ]
+    },
+
+    {
+      "name": "── STEP 3: CALL HANGUP ─────────────────────",
+      "item": [
+
+        {
+          "name": "3A. Hangup — Normal Flow",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Hangup success', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.statusCode).to.equal('SUCCESS');",
+                  "});",
+                  "// Clear collection variables after hangup",
+                  "pm.collectionVariables.set('callToken', '');",
+                  "pm.collectionVariables.set('voiceFlowState', '');",
+                  "pm.collectionVariables.set('lastTranscript', '');",
+                  "pm.collectionVariables.set('lastAssistant', '');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/call/hangup",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "callId",   "value": "{{callId}}" },
+                { "key": "tokenId",  "value": "{{callToken}}" }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "3B. Hangup — Invalid Token (Security Check)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Rejects mismatched token on hangup', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.statusCode).to.equal('FAILURE');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/call/hangup",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "callId",   "value": "{{callId}}" },
+                { "key": "tokenId",  "value": "invalid-token-xyz" }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "3C. Hangup — Session Already Gone (Idempotent)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Handles missing session gracefully', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json).to.be.an('object');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/call/hangup",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "callId",   "value": "non-existent-call-999" },
+                { "key": "tokenId",  "value": "any-token" }
+              ]
+            }
+          }
+        }
+
+      ]
+    }
+
+  ]
+}
